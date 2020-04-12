@@ -1,6 +1,15 @@
-import flask
-from flask import request, jsonify, g, current_app
-import sqlite3
+from flask import Flask, jsonify
+#from flask import request, jsonify, g, current_app
+
+# fix for local dynamodb creating duplicate tables at once cause of UTC timezone issues
+import os
+os.environ["TZ"] = "UTC"
+
+# import boto3
+from flask_dynamo import Dynamo
+import datetime
+from pprint import pprint
+
 
 ######################
 # API USAGE
@@ -39,62 +48,229 @@ import sqlite3
 # https://stackoverflow.com/questions/22669447/how-to-return-a-relative-uri-location-header-with-flask
 #   Return location header in a response (Answer by Martijn Pieters)
 
+# new
+# https://stackoverflow.com/questions/38918668/dynamodb-create-table-calls-fails'
+# Change _naive_is_dst in tz.py to fix negative UTC offset
+
+# https://stackoverflow.com/questions/27894393/is-it-possible-to-save-datetime-to-dynamodb
+# Entering datetime as an attribute in dynamodb
 ######################
-# config variables
-DATABASE = 'data.db'
-DEBUG = True
+app = Flask(__name__)
 
-######################
-app = flask.Flask(__name__)
-app.config.from_object(__name__)
+# app.config.from_object(__name__)
 
-######################
-# Database
-# app.config.from_envvar('APP_CONFIG')
-# db_name: data.db
+# flask config variables
+app.config['DEBUG'] = True
 
-# table1: posts
-# post_id
-# community_id
-# title
-# description
-# resource_url
-# published
-# username
-# vote_id
+# dynamodb config variables
+app.config['AWS_ACCESS_KEY_ID']       = 'fakeMyKeyId'
+app.config['AWS_SECRET_ACCESS_KEY']   = 'fakeSecretAccessKey'
+app.config['AWS_REGION']              = 'us-west-2'
+app.config['DYNAMO_ENABLE_LOCAL']     = True
+app.config['DYNAMO_LOCAL_HOST']       = 'localhost'
+app.config['DYNAMO_LOCAL_PORT']       = 8000
+#
 
-# table2: votes
-# vote_id
-# upvotes
-# downvotes
+# dynamodb using boto3
+"""
+# boto3 client (low level api)
+# boto3 resource (high level api)
+# using a high level api is preferred
 
-# table3: community
-# community_id
-# name
+dynamodb = boto3.resource(
+    'dynamodb',
+    region_name='us-west-2',
+    endpoint_url="http://localhost:8000")
 
 
-######################
-# helper function used to convert each query result row into dictionary
-def make_dicts(cursor, row):
-    return dict((cursor.description[idx][0], value) for idx, value in enumerate(row))
+def init_tables():
+    all_tables = list(dynamodb.tables.all())
+    table_names = []
 
-
-# helper function to generate a response with status code and message
-def get_response(status_code, message):
-    return {"status_code": str(status_code), "message": str(message)}
-
-
-# get db from flask g namespace
-def get_db():
-    if 'db' not in g:
-        g.db = sqlite3.connect(
-            current_app.config['DATABASE'],
-            detect_types=sqlite3.PARSE_DECLTYPES
+    # get list of table names
+    if len(all_tables) > 0:
+        for i in all_tables:
+            table_names.append(i.table_name)
+    # create posts table if it does not exist
+    if 'posts' not in table_names:
+        table = dynamodb.create_table(
+            TableName='posts',
+            KeySchema=[
+                {
+                    'AttributeName': 'post_id',
+                    'KeyType': 'HASH'
+                },
+                {
+                    'AttributeName': 'username',
+                    'KeyType': 'RANGE'
+                },
+            ],
+            AttributeDefinitions=[
+                {
+                    'AttributeName': 'post_id',
+                    'AttributeType': 'N'
+                },
+                {
+                    'AttributeName': 'username',
+                    'AttributeType': 'S'
+                },
+            ],
+            ProvisionedThroughput={
+                'ReadCapacityUnits': 1,
+                'WriteCapacityUnits': 1
+            },
         )
-        g.db.row_factory = make_dicts
-    return g.db
+        table.meta.client.get_waiter('table_exists').wait(TableName='posts')
+        table.put_item(
+            Item={
+                'post_id':  1,
+                'username': 'math_guy_1',
+                'community_name': 'algebra',
+                'title': 'Algebra Post 1',
+                'description': 'Some quadratic formula',
+                'resource_url': 'http://fullerton.edu',
+            },
+        )
+    else:
+        table = dynamodb.Table("posts")
+    print("Table 'posts' status: ", table.table_status)
+    print("No of items in 'posts' table: ", table.item_count)
+"""
 
 
+######################
+# create dynamodb table: posts
+# dynamodb using flask-dynamo (easier)
+app.config['DYNAMO_TABLES'] = [
+    dict(
+        TableName='posts',
+        KeySchema=[
+            {
+                'AttributeName': 'post_id',
+                'KeyType': 'HASH'
+            },
+            {
+                'AttributeName': 'username',
+                'KeyType': 'RANGE'
+            },
+        ],
+        AttributeDefinitions=[
+            {
+                'AttributeName': 'post_id',
+                'AttributeType': 'N'
+            },
+            {
+                'AttributeName': 'username',
+                'AttributeType': 'S'
+            },
+        ],
+        ProvisionedThroughput={
+            'ReadCapacityUnits': 1,
+            'WriteCapacityUnits': 1
+        },
+    )
+]
+
+dynamo = Dynamo(app)    # this line should be called after declaring all config variables
+with app.app_context():
+    dynamo.create_all()
+
+
+######################
+# function to put items in dynamodb table
+def put_item_ddb(**kwargs):
+    # raise error if table name is not in function args
+    table_name = kwargs.get('table_name')
+    if not table_name:
+        raise ValueError("table name does not exist")
+
+    # ensure primary keys are included as args
+    req_keys = [i['AttributeName'] for i in dynamo.tables[table_name].key_schema]
+    for i in req_keys:
+        if i not in list(kwargs.keys()):
+            raise ValueError(f"Required key '{i}' not included in args")
+
+    # put item in table
+    item = {i: kwargs.get(i) for i in list(kwargs.keys()) if i != 'table_name'}
+    dynamo.tables[table_name].put_item(Item=item)
+
+
+# call this function to put initial items in posts
+def init_posts():
+    put_item_ddb(table_name='posts',
+                 post_id=1,
+                 username='math_guy_1',
+                 community_name='algebra',
+                 title='Algebra Post 1',
+                 description='Some quadratic formula',
+                 resource_url='http://fullerton.edu',
+                 published=str(datetime.datetime.utcnow().isoformat()),
+                 )
+
+    put_item_ddb(table_name='posts',
+                 post_id=2,
+                 username='math_guy_1',
+                 community_name='calculus',
+                 title='Calculus Post 1',
+                 description='Steps to integrate',
+                 published=str(datetime.datetime.utcnow().isoformat()),
+                 )
+
+    put_item_ddb(table_name='posts',
+                 post_id=3,
+                 username='math_guy_2',
+                 community_name='algebra',
+                 title='Algebra Post 1',
+                 description='Some quadratic formula',
+                 resource_url='http://fullerton.edu',
+                 published=str(datetime.datetime.utcnow().isoformat()),
+                 )
+
+    put_item_ddb(table_name='posts',
+                 post_id=4,
+                 username='some_math_guy',
+                 community_name='algebra',
+                 title='Algebra Post 1',
+                 description='Some quadratic formula',
+                 resource_url='http://fullerton.edu',
+                 published=str(datetime.datetime.utcnow().isoformat()),
+                 )
+
+
+init_posts()
+
+
+def print_table_names():
+    print("Tables in dynamodb:")
+    for table_name, table in dynamo.tables.items():
+        print(table_name)
+
+
+# print_table_names()
+
+
+def delete_all_tables():
+    dynamo.destroy_all()
+
+# print whole posts table
+# pprint(dynamo.tables['posts'].scan()['Items'])
+
+
+@app.route('/all', methods=['GET'])
+def get_all_posts():
+    posts = dynamo.tables['posts'].scan()['Items']
+    for post in posts:
+        for key in list(post.keys()):
+            if key =='post_id':
+                post[key] = int(post[key])
+            if type(post[key]) not in [str, int, float, bool]:
+                print('Key:', key,'Value:', post[key],'Type:', type(post[key]), sep=' ')
+    posts = sorted(posts, key=lambda x: x['post_id'])
+    return jsonify(posts), 200
+
+
+# old code
+"""
 # initiate db with
 # $FLASK_APP=post_api.py
 # $flask init
@@ -120,7 +296,8 @@ def close_db(e=None):
 # home page
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify(get_response(status_code=200, message="Welcome to CSUF Discussions Post API."))
+    return jsonify(get_response(status_code=200, 
+        message="Welcome to CSUF Discussions Post API."))
 
 
 # 404 page
@@ -276,7 +453,8 @@ def create_post():
         query2 = 'INSERT INTO community (community_name) VALUES (?)'
         args2 = (community_name,)
         query3 = 'INSERT INTO posts (community_id, title, description, resource_url, username, vote_id) ' \
-                 'VALUES ((SELECT community_id FROM community WHERE community_name=?),?,?,?,?,(SELECT MAX(vote_id) FROM votes))'
+                 'VALUES ((SELECT community_id FROM community WHERE community_name=?),?,?,?,?,' \
+                 '(SELECT MAX(vote_id) FROM votes))'
         args3 = (community_name, title, description, resource_url, username)
         q = transaction_db(query=[query1, query2, query3, query4], args=[args1, args2, args3, args4], return_=True)
     if not q:
@@ -313,10 +491,13 @@ def delete_post():
     if not q:
         return page_not_found(404)
     return jsonify(get_response(status_code=200, message="Post deleted")), 200
+"""
 
 
 def main():
     app.run()
+    # init_tables() # boto3
+    # pass
 
 
 if __name__ == '__main__':

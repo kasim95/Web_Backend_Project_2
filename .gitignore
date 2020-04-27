@@ -131,3 +131,6 @@ reddit_api_creds.py
 
 # Old files
 discarded/*
+
+# csv files
+*.csv

@@ -1,16 +1,13 @@
-from flask import Flask, jsonify, request
-# from flask import request, jsonify, g, current_app
-
-# fix for local dynamodb creating duplicate tables at once cause of UTC timezone issues
-import os
-
-os.environ["TZ"] = "UTC"
-
-import boto3
 import datetime
 import json
-# from flask_dynamo import Dynamo
-from boto3.dynamodb.conditions import Key, Attr
+from flask import Flask, jsonify, request, send_from_directory
+
+# fix for local dynamodb creating duplicate tables at once because of UTC timezone issues
+import os
+os.environ["TZ"] = "UTC"
+#
+import boto3
+
 
 ######################
 # References
@@ -18,12 +15,15 @@ from boto3.dynamodb.conditions import Key, Attr
 ######################
 # GLOBALS
 TABLENAME = 'posts'
+DATABASE_DATA = 'posts.json'
+
+# flask globals
 app = Flask(__name__)
 
 # flask config variables
 app.config['DEBUG'] = True
 
-# dynamodb config variables
+# dynamodb config variables (delete later)
 app.config['AWS_ACCESS_KEY_ID'] = 'fakeMyKeyId'
 app.config['AWS_SECRET_ACCESS_KEY'] = 'fakeSecretAccessKey'
 app.config['AWS_REGION'] = 'us-west-2'
@@ -32,17 +32,19 @@ app.config['DYNAMO_LOCAL_HOST'] = 'localhost'
 app.config['DYNAMO_LOCAL_PORT'] = 8000
 #
 
+# Dynamodb globals
+client = boto3.client('dynamodb', endpoint_url='http://localhost:8000')
+
 # dynamodb using boto3
 # boto3 client (low level api)
 # boto3 resource (high level api)
-# using a high level api is preferred
-######################
-# boto3 globals
-client = boto3.client('dynamodb', endpoint_url='http://localhost:8000')
+
 
 ######################
+# Helpers
 # remove attribute type from json
 remove_type = lambda x: [{i: j[i]['S'] for i in list(j.keys())} for j in x]
+
 
 # sort json using a key
 sort_json = lambda x: sorted(x, key=lambda y: y['published'])
@@ -53,13 +55,15 @@ def get_response(status_code, message):
     return {"status_code": str(status_code), "message": str(message)}
 
 
+######################
+# Dynamodb functions
 # create table using boto3 client
 def init_table():
     response = client.create_table(
         TableName=TABLENAME,
         AttributeDefinitions=[
             {
-                'AttributeName': 'username',
+                'AttributeName': 'uuid',
                 'AttributeType': 'S'
             },
             {
@@ -73,7 +77,7 @@ def init_table():
         ],
         KeySchema=[
             {
-                'AttributeName': 'username',
+                'AttributeName': 'uuid',
                 'KeyType': 'HASH'
             },
             {
@@ -94,57 +98,131 @@ def init_table():
                     'ProjectionType': 'ALL'
                 },
                 'ProvisionedThroughput': {
-                    'ReadCapacityUnits': 1,
-                    'WriteCapacityUnits': 1
+                    'ReadCapacityUnits': 5,
+                    'WriteCapacityUnits': 5
                 }
             },
         ],
         ProvisionedThroughput={
-            'ReadCapacityUnits': 10,
-            'WriteCapacityUnits': 10
+            'ReadCapacityUnits': 20,
+            'WriteCapacityUnits': 20
         },
     )
+    print("Create Table operation finished successfully")
 
 
 tbs = client.list_tables()
-
-
 # print(tbs)
 
 
-# function to put items in dynamodb table
+# function to put a single item in dynamodb
 # DO NOT CHANGE table_name to TABLENAME
 def put_item_ddb(**kwargs):
     # raise error if table name is not in function args
     table_name = kwargs.get('table_name')
     if not table_name:
-        raise ValueError("table name does not exist")
+        raise ValueError("table name not specified")
 
     # ensure primary keys are included as args
-    req_keys = client.describe_table(TableName='posts')['Table']['KeySchema'] + \
-               [i['KeySchema'] for i in client.describe_table(TableName='posts')['Table']['GlobalSecondaryIndexes']][0]
+    req_keys = client.describe_table(TableName=table_name)['Table']['KeySchema'] + \
+               [i['KeySchema'] for i in client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
     req_keys = [i['AttributeName'] for i in req_keys]
     for i in req_keys:
         if i not in list(kwargs.keys()):
-            print(kwargs)
+            # print(kwargs)
             raise ValueError(f"Required key '{i}' not included in args")
+    #
 
     # put item in table
     item = {i: {'S': kwargs.get(i)} for i in list(kwargs.keys()) if i != 'table_name'}
     client.put_item(TableName=table_name, Item=item)
 
 
+# function to put items in batch in dynamodb
+# all items in batch should belong to the same table
+def put_item_batch(items):
+    table_name = items[0].get('table_name')
+    if not table_name:
+        raise ValueError('table name not specified')
+
+    # get required keys (Partition key, Sorting Key, Secondary index Key)
+    req_keys = client.describe_table(TableName=table_name)['Table']['KeySchema'] + \
+               [i['KeySchema'] for i in
+                client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
+    req_keys = [i['AttributeName'] for i in req_keys]
+
+    putreq_list = []
+    for item in items:
+        # ensure required keys are included as args
+        for i in req_keys:
+            if i not in list(item.keys()):
+                # print(item)
+                raise ValueError(f"Required key '{i}' not included in args")
+        #
+        putreq = {'PutRequest': {'Item': {i: {'S': item.get(i)} for i in list(item.keys()) if i != 'table_name'}}}
+        putreq_list.append(putreq)
+    req_items = {table_name: putreq_list}
+
+    # write in batch
+    # print(req_items)
+    response = client.batch_write_item(RequestItems=req_items)
+
+
 # call this function to put initial items in posts
+# this function takes around 30 mins for ~5000 records
 def init_posts():
-    # read initial posts values from dynamo_init.json
-    with open('dynamo_init.json', 'rb') as f:
+    # read initial posts values from DATABASE_DATA file
+    with open(DATABASE_DATA, 'rb') as f:
         data = json.loads(f.read())['data']
 
     for i in data:
         kwargs = i.copy()
         kwargs['table_name'] = TABLENAME
-        kwargs['published'] = str(datetime.datetime.utcnow().isoformat())
+        # if published key is not present, default it to right now since it is a Sorting Key
+        kwargs.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
+        #
+        # delete kwargs with values as empty strings or None
+        for j in list(kwargs.keys()):
+            if kwargs[j] is None or kwargs[j] == "":
+                _ = kwargs.pop(j, None)
+        #
+        # write item to db
         put_item_ddb(**kwargs)
+    print("Create Posts Operation finished successfully")
+
+
+# init posts in batch (for faster db initialization)
+def init_posts_batch():
+    # read initial posts values from DATABASE_DATA file
+    with open(DATABASE_DATA, 'rb') as f:
+        data = json.loads(f.read())['data']
+    #
+    count = 0
+    batch_size = 25     # decrease this value if fn gives Throughput error
+    while True:
+        if count >= len(data):
+            break
+        if count != 0 and count % 500 == 0:
+            print(f"{count} items written to db")
+        items = data[count:count+batch_size]
+        batch = []
+        for i in items:
+            kwargs = i.copy()
+            kwargs['table_name'] = TABLENAME
+            # if published key is not present, default it to right now since it is a Sorting Key
+            kwargs.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
+            #
+            # delete kwargs with values as empty strings or None
+            for j in list(kwargs.keys()):
+                if kwargs[j] is None or kwargs[j] == "":
+                    _ = kwargs.pop(j, None)
+            batch.append(kwargs)
+            #
+
+        put_item_batch(batch)
+        # increment counter
+        count += batch_size
+    print("Batch Create Posts Operation finished successfully")
 
 
 def print_table_names():
@@ -152,12 +230,15 @@ def print_table_names():
     print(client.list_tables())
 
 
+######################
+# Flask Routes
 # $flask init
-# use flask init to create posts table and fill demo data
+# use flask init to create posts table and fill it with data
 @app.cli.command('init')
 def init_db():
     init_table()
-    init_posts()
+    # init_posts()
+    init_posts_batch()
 
 
 # 404 page
@@ -167,16 +248,23 @@ def page_not_found(status_code=404):
     return jsonify(error_json), status_code
 
 
+# fix favicon 500 error (Reference used)
+@app.route('/favicon.ico')
+def favicon():
+    return page_not_found(404)
+
+
 # this function is for test only. Will be deleted later
 @app.route('/all', methods=['GET'])
 def get_all_posts():
     posts = client.scan(TableName=TABLENAME)['Items']
+    """
     for post in posts:
         for key in list(post.keys()):
             if type(post[key]) not in [str, int, float, bool]:
                 print('Key:', key, 'Value:', post[key], 'Type:', type(post[key]), sep=' ')
+    """
     posts = remove_type(posts)
-    # posts = sorted(posts, key=lambda x: x['published'])
     posts = sort_json(posts)
     return jsonify(posts), 200
 
@@ -184,9 +272,9 @@ def get_all_posts():
 @app.route('/get', methods=["GET"])
 def get_post_filtered():
     """
-    This route takes TWO arguments only
-    n : Number of posts
-    community_name : Name of community
+            This route takes TWO arguments only
+            n : Number of posts
+            community_name : Name of community
     """
     params = request.args
 

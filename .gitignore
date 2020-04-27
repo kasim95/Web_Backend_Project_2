@@ -125,3 +125,9 @@ dmypy.json
 
 # pycharm
 .idea/*
+
+# Reddit API
+reddit_api_creds.py
+
+# Old files
+discarded/*

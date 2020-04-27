@@ -98,20 +98,20 @@ def init_table():
                     'ProjectionType': 'ALL'
                 },
                 'ProvisionedThroughput': {
-                    'ReadCapacityUnits': 5,
-                    'WriteCapacityUnits': 5
+                    'ReadCapacityUnits': 25,
+                    'WriteCapacityUnits': 25
                 }
             },
         ],
         ProvisionedThroughput={
-            'ReadCapacityUnits': 20,
-            'WriteCapacityUnits': 20
+            'ReadCapacityUnits': 50,
+            'WriteCapacityUnits': 50
         },
     )
     print("Create Table operation finished successfully")
 
 
-tbs = client.list_tables()
+# tbs = client.list_tables()
 # print(tbs)
 
 
@@ -198,6 +198,7 @@ def init_posts_batch():
         data = json.loads(f.read())['data']
     #
     count = 0
+    # batch_size cannot exceed 25 (gives an error)
     batch_size = 25     # decrease this value if fn gives Throughput error
     while True:
         if count >= len(data):
@@ -236,9 +237,19 @@ def print_table_names():
 # use flask init to create posts table and fill it with data
 @app.cli.command('init')
 def init_db():
+    table_names = client.list_tables()['TableNames']
+    if len(client.list_tables()['TableNames']) > 0:
+        for i in table_names:
+            response = client.delete_table(TableName=i)
+        print("Existing tables purged")
+    print('*' * 30)
+    print(f"Creating new table {TABLENAME}")
     init_table()
+    print('*'*30)
+    print(f"Posts Batch writing Operation started")
     # init_posts()
     init_posts_batch()
+    print('*' * 30)
 
 
 # 404 page

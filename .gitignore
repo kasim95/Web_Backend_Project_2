@@ -131,6 +131,16 @@ reddit_api_creds.py
 
 # Old files
 discarded/*
+scratchpad.ipynb
 
-# csv files
-*.csv
+# ignore all dynamodb files (inconsistent behavior accross different machines)
+DynamoDBLocal.jar
+DynamoDBLocal_lib/*
+shared-local-instance.db
+README.txt
+LICENSE.txt
+third_party_licenses/*
+
+# ignore files from previous project
+data.db
+api.cfg

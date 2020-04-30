@@ -1,0 +1,1 @@
+curl -i -X POST -H 'Content-Type:application/json' -d '{ "uuid":"9H1TQXRQQ8JAL7HE1OSWN6K5Z", "published":"1588265108", "username":"that_ghost", "community_name":"he_alone"}' http://localhost:5000/update

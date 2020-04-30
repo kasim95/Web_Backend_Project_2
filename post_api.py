@@ -1,6 +1,6 @@
 import datetime
 import json
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 
 # fix for local dynamodb creating duplicate tables at once because of UTC timezone issues
 import os
@@ -11,6 +11,9 @@ import boto3
 
 ######################
 # References
+# Retrieve a single post using only HASH key of Primary Key (not HASH + RANGE key)
+# apparently it is a bug that DynamoDB get_item() doesn't allow this type of usage
+# https://github.com/aws/aws-sdk-php/issues/1233
 
 ######################
 # GLOBALS
@@ -46,17 +49,6 @@ client = boto3.client('dynamodb', endpoint_url='http://localhost:8000')
 # remove_type = lambda x: [{i: j[i]['S'] for i in list(j.keys())} for j in x]
 remove_type = lambda x: \
     [{i: j[i][list(j[i].keys())[0]] for i in list(j.keys())} for j in x]
-
-
-"""
-def remove_type(resp):
-    for j in resp:
-        for i in list(j.keys()):
-            if i ==  'published':
-                attr = {i: j[i]['N']}
-            else:
-                attr = {i: j[i]['S']}
-"""
 
 
 # sort json using a key
@@ -172,8 +164,7 @@ def put_item_batch(items):
 
     # get required keys (Partition key, Sorting Key, Secondary index Key)
     req_keys = client.describe_table(TableName=table_name)['Table']['KeySchema'] + \
-               [i['KeySchema'] for i in
-                client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
+           [i['KeySchema'] for i in client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
     req_keys = [i['AttributeName'] for i in req_keys]
 
     putreq_list = []
@@ -371,9 +362,7 @@ def get_post_filtered():
             response = response['Items']
         else:
             # no community name, return all results with limit (ignore uuid and published
-            kwargs = dict(
-                TableName=TABLENAME
-            )
+
             # Scan whole table and sort it
             result = []
             response = client.scan(TableName='posts')
@@ -398,42 +387,89 @@ def get_post_filtered():
 
 
 # verify if it works
-@app.route('/create', methods=['GET'])
+@app.route('/create', methods=['POST'])
 def create_post():
     params = request.get_json()
-    kwargs = params.copy()
-    kwargs['table_name'] = TABLENAME
+
+    # check if uuid exists
+    if params.get('uuid') is not None:
+        get_kwargs = dict(
+            TableName=TABLENAME,
+            KeyConditionExpression='#uuid_key = :uuid',
+            ExpressionAttributeValues={
+                ':uuid': {'S': f'{str(params.get("uuid"))}'}
+            },
+            ExpressionAttributeNames={
+                '#uuid_key': 'uuid',
+            }
+        )
+        response = client.query(**get_kwargs)
+        if 'Items' in response:
+            response = response['Items']
+        else:
+            response = []
+        if len(response) > 0:
+            return jsonify(status_code=409, message='uuid already exists')
+    else:
+        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
+
+    # put item in db
+    kwargs = {'table_name': TABLENAME}
+    for i in list(params.keys()):
+        kwargs[i] = params[i]
     try:
         put_item_ddb(**kwargs)
-    except e:
-        return page_not_found(404)
-    return get_response(status_code=201, message="Post Created")
+    except:
+        return jsonify(get_response(status_code=404, message="Dynamodb put_item query failed"))
+    return jsonify(get_response(status_code=201, message="Post Created"))
 
 
-# fix this one (not working)
-@app.route('/delete', methods=['GET'])
+# route to update the value of an item
+@app.route('/update', methods=['POST'])
+def update_post():
+    params = request.json
+    if params.get('uuid') is None or params.get('published') is None:
+        return jsonify(get_response(status_code=404, message='uuid or published attribute not found'))
+    kwargs = {'TableName': TABLENAME,
+              'Key': {
+                         'uuid': {'S': str(params['uuid'])},
+                         'published': {'N': str(params['published'])}
+                     }
+              }
+    upd_exp = 'SET'
+    exp_values = {}
+    counter = 0
+    for i in list(params.keys()):
+        if i not in ['uuid', 'published']:
+            if counter > 0:
+                upd_exp += ', '
+            upd_exp = upd_exp + ' ' + i + ' = :' + i
+            exp_values[':'+i] = {'S': str(params[i])}
+            counter += 1
+    kwargs['UpdateExpression'] = upd_exp
+    kwargs['ExpressionAttributeValues'] = exp_values
+    try:
+        response = client.update_item(**kwargs)
+        return jsonify(get_response(status_code=201, message='Post updated'))
+    except:
+        return jsonify(get_response(status_code=404, message='DynamoDB update operation failed'))
+
+
+# route to delete a post (requires uuid and published params)
+@app.route('/delete', methods=['DELETE'])
 def delete_post():
-    key = {}
     params = request.args
-    # if not params.get('username') or not params.get('community_name') or not params.get('title'):
-    #    return page_not_found(404)
-    if not params.get('username'):
-        return page_not_found(404)
-    key['username'] = {'S': params['username'], }
-    if params.get('published'):
-        key["published"] = {'S': params["published"], }
-    elif params.get('community_name') and params.get('title'):
-        key['community_name'] = {'S': params['community_name'], }
-        key['title'] = {'S': params['title'], }
+    if params.get('uuid') and params.get('published'):
+        response = client.delete_item(
+            TableName=TABLENAME,
+            Key={
+                'uuid': {'S': f'{str(params["uuid"])}'},
+                'published': {'N': f'{str(params["published"])}'}
+            }
+        )
+        return jsonify(get_response(status_code=200, message='Post deleted'))
     else:
-        return page_not_found(404)
-
-    response = client.delete_item(
-        TableName=TABLENAME,
-        Key=key,
-        ConditionExpression='string',
-    )
-    return 200
+        return jsonify(get_response(status_code=404, message='delete post requires uuid and published attributes'))
 
 
 def main():

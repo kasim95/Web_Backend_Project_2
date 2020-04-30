@@ -43,7 +43,20 @@ client = boto3.client('dynamodb', endpoint_url='http://localhost:8000')
 ######################
 # Helpers
 # remove attribute type from json
-remove_type = lambda x: [{i: j[i]['S'] for i in list(j.keys())} for j in x]
+# remove_type = lambda x: [{i: j[i]['S'] for i in list(j.keys())} for j in x]
+remove_type = lambda x: \
+    [{i: j[i][list(j[i].keys())[0]] for i in list(j.keys())} for j in x]
+
+
+"""
+def remove_type(resp):
+    for j in resp:
+        for i in list(j.keys()):
+            if i ==  'published':
+                attr = {i: j[i]['N']}
+            else:
+                attr = {i: j[i]['S']}
+"""
 
 
 # sort json using a key
@@ -68,7 +81,7 @@ def init_table():
             },
             {
                 'AttributeName': 'published',
-                'AttributeType': 'S'
+                'AttributeType': 'N'
             },
             {
                 'AttributeName': 'community_name',
@@ -92,7 +105,11 @@ def init_table():
                     {
                         'AttributeName': 'community_name',
                         'KeyType': 'HASH',
-                    }
+                    },
+                    {
+                        'AttributeName': 'published',
+                        'KeyType': 'RANGE'
+                    },
                 ],
                 'Projection': {
                     'ProjectionType': 'ALL'
@@ -134,7 +151,15 @@ def put_item_ddb(**kwargs):
     #
 
     # put item in table
-    item = {i: {'S': kwargs.get(i)} for i in list(kwargs.keys()) if i != 'table_name'}
+    # item = {i: {'S': kwargs.get(i)} for i in list(kwargs.keys()) if i != 'table_name'}
+    item = {}
+    for i in list(kwargs.keys()):
+        if i != 'table_name':
+            if i == 'published':
+                item[i] = {"N": str(kwargs.get(i))}
+            else:
+                item[i] = {"S": kwargs.get(i)}
+    #
     client.put_item(TableName=table_name, Item=item)
 
 
@@ -159,7 +184,20 @@ def put_item_batch(items):
                 # print(item)
                 raise ValueError(f"Required key '{i}' not included in args")
         #
-        putreq = {'PutRequest': {'Item': {i: {'S': item.get(i)} for i in list(item.keys()) if i != 'table_name'}}}
+
+        # Write items in batch
+        # putreq = {'PutRequest': {'Item': {i: {'S': item.get(i)} for i in list(item.keys()) if i != 'table_name'}}}
+        it = {}
+        for i in list(item.keys()):
+            if i != 'table_name':
+                if i == 'published':
+                    it[i] = {"N": str(item[i])}
+                else:
+                    it[i] = {"S": item[i]}
+
+        putreq = {'PutRequest': {"Item": it}}
+        #
+
         putreq_list.append(putreq)
     req_items = {table_name: putreq_list}
 
@@ -283,48 +321,78 @@ def get_all_posts():
 @app.route('/get', methods=["GET"])
 def get_post_filtered():
     """
-            This route takes TWO arguments only
+            This route takes the following arguments
             n : Number of posts
             community_name : Name of community
+            uuid : uuid (also requires published (shoould be used for a single post retrieval))
+            if params contains uuid, all other params are ignored except published
     """
     params = request.args
-
-    """
-    # retrieve a single item with PK and SK
-    response = client.get_item(
-        TableName=TABLENAME,
-        Key={
-            'username':'math_guy_1',
-            'published':'2020-04-26T12:55:29.742357'
-        }
-    )
-    #
-    """
-    if params.get('community_name'):
+    if params.get('uuid') is not None:
+        # got uuid, return a single post (Ignore all other params)
         kwargs = dict(
             TableName=TABLENAME,
-            IndexName='community_name-index',
-            KeyConditionExpression='community_name = :community_name',
+            KeyConditionExpression='#uuid_key = :uuid',
             ExpressionAttributeValues={
-                ':community_name': {'S': params['community_name']},
+                ':uuid': {'S': f'{str(params["uuid"])}'}
             },
+            ExpressionAttributeNames={
+                '#uuid_key': 'uuid',
+            }
         )
-        if params.get('n'):
-            n = params['n']
-            try:
-                n = int(n)
-            except e:
-                return page_not_found(404)
-            kwargs['Limit'] = n
         response = client.query(**kwargs)
+        if 'Items' in response:
+            response = response['Items']
+        else:
+            response = []
     else:
-        kwargs = dict(
-            TableName=TABLENAME
-        )
-        if params.get('n'):
-            kwargs['Limit'] = int(params['n'])
-        response = client.scan(**kwargs)
-    response = response['Items']
+        if params.get('community_name'):
+            # got community_name, filter posts from community_name (ignore uuid and published)
+            kwargs = dict(
+                TableName=TABLENAME,
+                IndexName='community_name-index',
+                KeyConditionExpression='community_name = :community_name',
+                ExpressionAttributeValues={
+                    ':community_name': {'S': params['community_name']},
+                },
+            )
+            if params.get('n'):
+                n = params['n']
+                try:
+                    n = int(n)
+                except e:
+                    return page_not_found(404)
+                kwargs['Limit'] = n
+            #
+            if params.get('recent') is not None:
+                kwargs['ScanIndexForward'] = not params['recent']
+            #
+            response = client.query(**kwargs)
+            response = response['Items']
+        else:
+            # no community name, return all results with limit (ignore uuid and published
+            kwargs = dict(
+                TableName=TABLENAME
+            )
+            # Scan whole table and sort it
+            result = []
+            response = client.scan(TableName='posts')
+            for i in response['Items']:
+                result.append(i)
+            while 'LastEvaluatedKey' in response:
+                response = client.scan(TableName='posts', ExclusiveStartKey=response['LastEvaluatedKey'])
+                for i in response["Items"]:
+                    result.append(i)
+
+            # sort on published
+            if params.get('recent') is not None:
+                result = sorted(result, key=lambda x: x['published']['N'], reverse=True)
+
+            # return n posts
+            if params.get('n'):
+                result = result[:int(params['n'])]
+
+            response = result
     response = remove_type(response)
     return jsonify(response), 200
 

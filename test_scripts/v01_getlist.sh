@@ -1,0 +1,3 @@
+curl -i -X POST -H 'Content-Type:application/json' -d '{"n":3, "sorted":"True", "uuid":["CQHYO2LBB1GFRIYVTH28TUEMV", "BAOL4MNKJWB2L04BC48IMKE53", "BAOL4EZ1LALJXK49HTOL84FBR", "CYBDDVCRY049BOWC2G0U2432V", "C36AVEOBBYY9BVV6LQBF74H3R"]}' http://localhost:5000/getlist;
+
+

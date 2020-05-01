@@ -386,6 +386,34 @@ def get_post_filtered():
     return jsonify(response), 200
 
 
+# get post filtered from a list
+@app.route('/get_uuids', methods=['POST'])
+def get_post_uuids():
+    params = request.json
+    print(params)
+    uuids = params.get('uuid')
+    if uuids is None:
+        return jsonify(get_response(status_code=404, message='list of uuids not found'))
+    json_ = []
+    for i in uuids:
+        kwargs = dict(
+            TableName=TABLENAME,
+            KeyConditionExpression='#uuid_key = :uuid',
+            ExpressionAttributeValues={
+                ':uuid': {'S': f'{str(i)}'}
+            },
+            ExpressionAttributeNames={
+                '#uuid_key': 'uuid',
+            }
+        )
+        response = client.query(**kwargs)
+        if 'Items' in response:
+            response = response['Items']
+            response = remove_type(response)
+            json_ += response
+    return jsonify(json_)
+
+
 # verify if it works
 @app.route('/create', methods=['POST'])
 def create_post():

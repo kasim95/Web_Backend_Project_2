@@ -3,29 +3,94 @@ import redis
 from flask import Flask, jsonify, request
 import json
 
-r = redis.Redis(host='localhost', port=6379, db=1)
-# load data
+
+#config
+app = Flask(__name__)
+app.config['DEBUG'] = True
+
+
+
+
+def init_db():
+    db = redis.StrictRedis(host='localhost',
+    port=6379,
+    db=1,
+    decode_responses=True)
+    return db
+
+def fill_db():
+    r.flushdb()
+    with open('votes.json') as data_file:
+        test_data = json.load(data_file)
+
+    length = (len(test_data["data"]))
+    for i in range(0,length):
+        d = test_data["data"][i]
+        uuid = d["uuid"]
+        published = d["published"]
+        score = d["score"]
+        community_name = d["community_name"]
+
+        #--adding in redis
+        r.hset(uuid, "community_name" ,community_name)
+        r.sadd(community_name,  uuid)
+        r.hset(uuid, "score" ,score)
+        r.hset(uuid, "published" ,published)
+        r.zadd("score",{uuid : score })
+        r.zadd("published",{ uuid: published })
+
+# initiaize redis database
+r = init_db()
+
+# load data in redis database
+fill_db()
+
+"""
+
 with open('votes.json', 'rb') as f:
     votes = json.loads(f.read())['data']
 for v in votes:
     r.set(v['uuid'], v['score'])
-
+"""
 
 # helper function to generate a response with status code and message
 def get_response(status_code, message):
     return {"status_code": str(status_code), "message": str(message)}
 
 
-app = Flask(__name__)
-app.config['DEBUG'] = True
+# home page
+@app.route('/', methods=['GET'])
+def home():
+    return "<h1>Welcome to CSUF Discussions API</h1>" \
+           "<p>Use /votes for votes api</p>"
 
 
-@app.cli.command('init')
-def init():
-    with open('votes.json', 'rb') as f:
-        json_ = json.loads(f.read())['data']
-    for i in json_:
-        r.set(i['uuid'], i['score'])
+@app.errorhandler(404)
+def page_not_found(status_code=404):
+    error_json = get_response(status_code=status_code, message="Resource not found")
+    return jsonify(error_json), status_code
+
+
+
+@app.route('/get_all', methods=['GET'])
+def get_posts_all():
+    all_id_sorted_by_score = r.zrange("score", 0, -1, desc=True)
+    json_ = []
+
+    for uuid in all_id_sorted_by_score:
+        d={}
+        score = r.hget(uuid,"score")
+        published = r.hget(uuid,"published")
+        community_name = r.hget(uuid,"community_name")
+        d["uuid"]=uuid
+        d["score"] = score
+        d["published"] = published
+        d["community_name"] = community_name
+        json_.append(d)
+
+
+
+    return jsonify(json_), 200
 
 
 @app.route('/get', methods=['GET'])
@@ -84,7 +149,7 @@ def get_score_list():
 
 def main():
 
-    app.run(port=5001)
+    app.run()
 
 
 if __name__ == '__main__':

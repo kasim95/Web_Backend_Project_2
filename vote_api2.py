@@ -93,28 +93,57 @@ def get_posts_all():
     return jsonify(json_), 200
 
 
+# http://127.0.0.1:5000/get?n=25&community_name=csuf&sorted=True
+# http://127.0.0.1:5000/get?n=25&community_name=csuf
+# http://127.0.0.1:5000/get?n=25
+# http://127.0.0.1:5000/get?n=25&sorted=True
+# http://127.0.0.1:5000/get?uuid=CUJCJWC6NZGR1A781OSPMNKPJ
 @app.route('/get', methods=['GET'])
 def get_score():
     params = request.args
     if params.get('uuid') is not None:
-        score = r.get(params.get('uuid'))
+        score = r.hget(params.get('uuid'),"score")
+        published = r.hget(params.get('uuid'),"published")
+        community_name = r.hget(params.get('uuid'),"community_name")
         if score is not None:
             json_ = [
                 {
                     'uuid': params.get('uuid'),
-                    'score': score.decode('utf-8')
+                    'score': score ,
+                    'published': published,
+                    'community_name': community_name
                 }
             ]
             return jsonify(json_), 200
         else:
             return jsonify(get_response(404, "uuid not found"))
     elif params.get('n') is not None:
-        keys = r.keys()
+
+        if params.get('community_name') is not None:
+
+            community_id_set = r.smembers( params.get('community_name') )
+            json_=[]
+            for uuid in community_id_set:
+                score = r.hget(uuid,"score")
+                published = r.hget(uuid,"published")
+                community_name = r.hget(uuid,"community_name")
+
+                if score is not None:
+                    json_.append({'uuid': uuid, 'score':score , 'published': published , 'community_name':community_name })
+
+            if bool(params.get('sorted')):
+                json_ = sorted(json_, key=lambda x: int(x['score']), reverse=True)
+            return jsonify(json_[:int(params.get('n'))])
+
+        keys = r.zrange("published", 0, -1, desc=True)
         json_ = []
-        for i in keys:
-            score = r.get(i).decode('utf-8')
+        for uuid in keys:
+
+            score = r.hget(uuid,"score")
+            published = r.hget(uuid,"published")
+            community_name = r.hget(uuid,"community_name")
             if score is not None:
-                json_.append({'uuid': i.decode('utf-8'), 'score':score})
+                json_.append({'uuid': uuid, 'score':score , 'published': published , 'community_name':community_name })
         if bool(params.get('sorted')):
             json_ = sorted(json_, key=lambda x: int(x['score']), reverse=True)
         return jsonify(json_[:int(params.get('n'))])
@@ -133,9 +162,9 @@ def get_score_list():
     uuids = params.get('uuid')
     json_ = []
     for i in uuids:
-        score = r.get(i)
+        score = r.hget(i,"score")
         if score is not None:
-            json_.append({'uuid': i, 'score': score.decode('utf-8')})
+            json_.append({'uuid': i, 'score': score})
     if len(json_) > 0:
         if bool(params.get('sorted')):
             json_ = sorted(json_, key=lambda x: int(x['score']), reverse=True)
@@ -145,6 +174,48 @@ def get_score_list():
         return jsonify(json_), 200
     else:
         return jsonify([]), 200
+
+@app.route('/upvotes',methods=['GET'])
+def get_upvotes():
+    params = request.json
+    if params.get('uuid') is None:
+        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
+    uuid = params.get('uuid')
+    r.hincrby( uuid ,"score",1)
+    score = r.hget(uuid,"score")
+    published = r.hget(uuid,"published")
+    community_name = r.hget(uuid,"community_name")
+    json_ = [
+        {
+            'uuid': params.get('uuid'),
+            'score': score ,
+            'published': published,
+            'community_name': community_name
+        }
+    ]
+    return jsonify(json_), 200
+
+
+
+@app.route('/downvotes',methods=['POST'])
+def get_downvotes():
+    params = request.json
+    if params.get('uuid') is None:
+        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
+    uuid = params.get('uuid')
+    r.hincrby( uuid ,"score",-1)
+    score = r.hget(uuid,"score")
+    published = r.hget(uuid,"published")
+    community_name = r.hget(uuid,"community_name")
+    json_ = [
+        {
+            'uuid': params.get('uuid'),
+            'score': score ,
+            'published': published,
+            'community_name': community_name
+        }
+    ]
+    return jsonify(json_), 200
 
 
 def main():

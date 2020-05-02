@@ -8,13 +8,14 @@
 
 ### Note
 Here we have used a scrapper to get the following values from Reddit, which is further divided into two seperate json file called posts.json and votes.json.
--- Posts --
+
+Keys for post database in DynamoDB
 ```
-uuid (unique ID) | username | title | url | description | published (timestamp) | community_name
+uuid (unique ID) | username | title | url | description | published (timestamp) sort_key | community_name
 ```
--- Votes --
+Keys for vote database in Redis 
 ```
-uuid (unique ID) | score (upvote-downvote) | community_name | published (timestamp)
+uuid (unique ID) | score (upvote-downvote) sort_key | community_name | published (timestamp) sort_key
 ```
 
 Names of community available in database

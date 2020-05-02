@@ -295,7 +295,7 @@ def favicon():
 
 
 # this function is for test only. Will be deleted later
-@app.route('/all', methods=['GET'])
+@app.route('/all', methods=['POST'])
 def get_all_posts():
     posts = client.scan(TableName=TABLENAME)['Items']
     """

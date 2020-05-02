@@ -13,12 +13,12 @@ Keys for post database in DynamoDB
 ```
 uuid (unique ID) | username | title | url | description | published (timestamp) sort_key | community_name
 ```
-Keys for vote database in Redis 
+Keys for vote database in Redis
 ```
 uuid (unique ID) | score (upvote-downvote) sort_key | community_name | published (timestamp) sort_key
 ```
 
-Names of community available in database
+Names of communities available in database
 ```
 csuf | news | Coronavirus | Python | computerscience | bitcoin
 ```
@@ -31,7 +31,7 @@ Total number of posts in database: 10,000
 foreman start -m post_db=1,post=1,vote=1,front=1
 ```
 
-2) Use the following URL for getting RSS feeds
+2) Use the following URL to get RSS feeds
 
 * The 25 most recent posts to a particular community
 ```
@@ -53,3 +53,12 @@ http://localhost:5000/get_sorted?n=25
 ```
 http://localhost:5000/get_hot?n=25
 ```
+
+#### ---------------------Dev 2 - Porting to the voting microservice to Redis---------------------------
+
+
+#### -----------------Dev 1 - Porting the posting microservice to Amazon DynamoDB Local----------------------
+
+
+## License
+[MIT](https://choosealicense.com/licenses/mit/)

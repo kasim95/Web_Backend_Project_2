@@ -1,8 +1,7 @@
 import datetime
 import json
 from flask import Flask, jsonify, request
-
-# fix for local dynamodb creating duplicate tables at once because of UTC timezone issues
+# fix for local dynamodb creating duplicate tables at once because of UTC timezone issues (Reference 1)
 import os
 os.environ["TZ"] = "UTC"
 #
@@ -11,6 +10,13 @@ import boto3
 
 ######################
 # References
+
+# Reference 1
+# Dynamodb local tries to create multiple tables when calling create_table fn
+# Answered on Stack Overflow by Noah Mcllraith
+# https://stackoverflow.com/questions/38918668/dynamodb-create-table-calls-fails
+
+# Reference 2
 # Retrieve a single post using only HASH key of Primary Key (not HASH + RANGE key)
 # apparently it is a bug that DynamoDB get_item() doesn't allow this type of usage
 # https://github.com/aws/aws-sdk-php/issues/1233
@@ -18,7 +24,7 @@ import boto3
 ######################
 # GLOBALS
 TABLENAME = 'posts'
-DATABASE_DATA = 'posts.json'
+DATABASE_DATA = 'data/posts.json'
 
 # flask globals
 app = Flask(__name__)
@@ -26,36 +32,26 @@ app = Flask(__name__)
 # flask config variables
 app.config['DEBUG'] = True
 
-# dynamodb config variables (delete later)
-app.config['AWS_ACCESS_KEY_ID'] = 'fakeMyKeyId'
-app.config['AWS_SECRET_ACCESS_KEY'] = 'fakeSecretAccessKey'
-app.config['AWS_REGION'] = 'us-west-2'
-app.config['DYNAMO_ENABLE_LOCAL'] = True
-app.config['DYNAMO_LOCAL_HOST'] = 'localhost'
-app.config['DYNAMO_LOCAL_PORT'] = 8000
-#
 
 # Dynamodb globals
 client = boto3.client('dynamodb', endpoint_url='http://localhost:8000')
-
-# dynamodb using boto3
-# boto3 client (low level api)
-# boto3 resource (high level api)
+# Using boto3 client (low level api) since it allows more control over queries
+# as compared to boto3 resource (high level api)
 
 
 ######################
 # Helpers
 # remove attribute type from json
-# remove_type = lambda x: [{i: j[i]['S'] for i in list(j.keys())} for j in x]
-remove_type = lambda x: \
-    [{i: j[i][list(j[i].keys())[0]] for i in list(j.keys())} for j in x]
+def remove_type(x):
+    return [{i: j[i][list(j[i].keys())[0]] for i in list(j.keys())} for j in x]
 
 
 # sort json using a key
-sort_json = lambda x: sorted(x, key=lambda y: y['published'])
+def sort_json(x):
+    return sorted(x, key=lambda y: y['published'])
 
 
-# helper function to generate a response with status code and message
+# generate a response with status code and message
 def get_response(status_code, message):
     return {"status_code": str(status_code), "message": str(message)}
 
@@ -63,6 +59,8 @@ def get_response(status_code, message):
 ######################
 # Dynamodb functions
 # create table using boto3 client
+# Primary Key created on uuid and published
+# Secondary Index created on community_name and published to perform filters on community_name
 def init_table():
     response = client.create_table(
         TableName=TABLENAME,
@@ -120,48 +118,31 @@ def init_table():
     print("Create Table operation finished successfully")
 
 
-# tbs = client.list_tables()
-# print(tbs)
-
-
 # function to put a single item in dynamodb
-# DO NOT CHANGE table_name to TABLENAME
-def put_item_ddb(**kwargs):
-    # raise error if table name is not in function args
-    table_name = kwargs.get('table_name')
-    if not table_name:
-        raise ValueError("table name not specified")
-
+def put_item_ddb(table_name, item_input):
     # ensure primary keys are included as args
     req_keys = client.describe_table(TableName=table_name)['Table']['KeySchema'] + \
                [i['KeySchema'] for i in client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
     req_keys = [i['AttributeName'] for i in req_keys]
     for i in req_keys:
-        if i not in list(kwargs.keys()):
-            # print(kwargs)
+        if i not in list(item_input.keys()):
             raise ValueError(f"Required key '{i}' not included in args")
     #
 
     # put item in table
-    # item = {i: {'S': kwargs.get(i)} for i in list(kwargs.keys()) if i != 'table_name'}
     item = {}
-    for i in list(kwargs.keys()):
+    for i in list(item_input.keys()):
         if i != 'table_name':
             if i == 'published':
-                item[i] = {"N": str(kwargs.get(i))}
+                item[i] = {"N": str(item_input.get(i))}
             else:
-                item[i] = {"S": kwargs.get(i)}
+                item[i] = {"S": item_input.get(i)}
     #
     client.put_item(TableName=table_name, Item=item)
 
 
-# function to put items in batch in dynamodb
-# all items in batch should belong to the same table
-def put_item_batch(items):
-    table_name = items[0].get('table_name')
-    if not table_name:
-        raise ValueError('table name not specified')
-
+# function to put items in batch in dynamodb to a single table
+def put_item_batch(table_name, items):
     # get required keys (Partition key, Sorting Key, Secondary index Key)
     req_keys = client.describe_table(TableName=table_name)['Table']['KeySchema'] + \
            [i['KeySchema'] for i in client.describe_table(TableName=table_name)['Table']['GlobalSecondaryIndexes']][0]
@@ -177,7 +158,6 @@ def put_item_batch(items):
         #
 
         # Write items in batch
-        # putreq = {'PutRequest': {'Item': {i: {'S': item.get(i)} for i in list(item.keys()) if i != 'table_name'}}}
         it = {}
         for i in list(item.keys()):
             if i != 'table_name':
@@ -185,7 +165,6 @@ def put_item_batch(items):
                     it[i] = {"N": str(item[i])}
                 else:
                     it[i] = {"S": item[i]}
-
         putreq = {'PutRequest': {"Item": it}}
         #
 
@@ -193,11 +172,10 @@ def put_item_batch(items):
     req_items = {table_name: putreq_list}
 
     # write in batch
-    # print(req_items)
     response = client.batch_write_item(RequestItems=req_items)
 
 
-# call this function to put initial items in posts
+# function to populate database with posts in posts.json
 # this function takes around 30 mins for ~5000 records
 def init_posts():
     # read initial posts values from DATABASE_DATA file
@@ -205,22 +183,22 @@ def init_posts():
         data = json.loads(f.read())['data']
 
     for i in data:
-        kwargs = i.copy()
-        kwargs['table_name'] = TABLENAME
+        item_dict = i.copy()
         # if published key is not present, default it to right now since it is a Sorting Key
-        kwargs.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
+        item_dict.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
         #
-        # delete kwargs with values as empty strings or None
-        for j in list(kwargs.keys()):
-            if kwargs[j] is None or kwargs[j] == "":
-                _ = kwargs.pop(j, None)
+        # delete item_dict with values as empty strings or None
+        for j in list(item_dict.keys()):
+            if item_dict[j] is None or item_dict[j] == "":
+                _ = item_dict.pop(j, None)
         #
         # write item to db
-        put_item_ddb(**kwargs)
+        put_item_ddb(table_name=TABLENAME, item_input=item_dict)
     print("Create Posts Operation finished successfully")
 
 
-# init posts in batch (for faster db initialization)
+# function to populate database with posts using batch_write in posts.json
+# this function is comparably faster than init_posts()
 def init_posts_batch():
     # read initial posts values from DATABASE_DATA file
     with open(DATABASE_DATA, 'rb') as f:
@@ -237,19 +215,19 @@ def init_posts_batch():
         items = data[count:count+batch_size]
         batch = []
         for i in items:
-            kwargs = i.copy()
-            kwargs['table_name'] = TABLENAME
+            item_dict = i.copy()
+            item_dict['table_name'] = TABLENAME
             # if published key is not present, default it to right now since it is a Sorting Key
-            kwargs.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
+            item_dict.setdefault('published', str(datetime.datetime.utcnow().isoformat()))
             #
-            # delete kwargs with values as empty strings or None
-            for j in list(kwargs.keys()):
-                if kwargs[j] is None or kwargs[j] == "":
-                    _ = kwargs.pop(j, None)
-            batch.append(kwargs)
+            # delete item_dict with values as empty strings or None
+            for j in list(item_dict.keys()):
+                if item_dict[j] is None or item_dict[j] == "":
+                    _ = item_dict.pop(j, None)
+            batch.append(item_dict)
             #
 
-        put_item_batch(batch)
+        put_item_batch(table_name=TABLENAME, items=batch)
         # increment counter
         count += batch_size
     print("Batch Create Posts Operation finished successfully")
@@ -276,7 +254,6 @@ def init_db():
     init_table()
     print('*'*30)
     print(f"Posts Batch writing Operation started")
-    # init_posts()
     init_posts_batch()
     print('*' * 30)
 
@@ -288,34 +265,20 @@ def page_not_found(status_code=404):
     return jsonify(error_json), status_code
 
 
-# fix favicon 500 error (Reference used)
+# fix for GET /favicon.ico giving Internal Server Error (500)
 @app.route('/favicon.ico')
 def favicon():
     return page_not_found(404)
-
-
-# this function is for test only. Will be deleted later
-@app.route('/all', methods=['POST'])
-def get_all_posts():
-    posts = client.scan(TableName=TABLENAME)['Items']
-    """
-    for post in posts:
-        for key in list(post.keys()):
-            if type(post[key]) not in [str, int, float, bool]:
-                print('Key:', key, 'Value:', post[key], 'Type:', type(post[key]), sep=' ')
-    """
-    posts = remove_type(posts)
-    posts = sort_json(posts)
-    return jsonify(posts), 200
 
 
 @app.route('/get', methods=["GET"])
 def get_post_filtered():
     """
             This route takes the following arguments
-            n : Number of posts
-            community_name : Name of community
-            uuid : uuid (also requires published (shoould be used for a single post retrieval))
+            n : (integer denoting no of posts (default: 100)    Number of posts to return
+            community_name : (community_name as string)         Name of community
+            uuid : (uuid as string):                            use uuid filter for a single post retrieval
+            recent: (True, False (default)):                    to return posts sorted as most recent to oldest
             if params contains uuid, all other params are ignored except published
     """
     params = request.args
@@ -338,7 +301,7 @@ def get_post_filtered():
             response = []
     else:
         if params.get('community_name'):
-            # got community_name, filter posts from community_name (ignore uuid and published)
+            # got community_name, filter posts with community_name
             kwargs = dict(
                 TableName=TABLENAME,
                 IndexName='community_name-index',
@@ -353,7 +316,9 @@ def get_post_filtered():
                     n = int(n)
                 except e:
                     return page_not_found(404)
-                kwargs['Limit'] = n
+            else:
+                n = 100  # default
+            kwargs['Limit'] = n
             #
             if params.get('recent') is not None:
                 kwargs['ScanIndexForward'] = not params['recent']
@@ -361,9 +326,8 @@ def get_post_filtered():
             response = client.query(**kwargs)
             response = response['Items']
         else:
-            # no community name, return all results with limit (ignore uuid and published
-
-            # Scan whole table and sort it
+            # no community name, return all results with limit
+            # Scan table and sort it
             result = []
             response = client.scan(TableName='posts')
             for i in response['Items']:
@@ -379,7 +343,10 @@ def get_post_filtered():
 
             # return n posts
             if params.get('n'):
-                result = result[:int(params['n'])]
+                n = int(params['n'])
+            else:
+                n = 100  # default
+            result = result[:n]
 
             response = result
     response = remove_type(response)
@@ -414,7 +381,8 @@ def get_post_uuids():
     return jsonify(json_)
 
 
-# verify if it works
+# route to create a post
+# the uuid should be generated by Backend for Frontend server and passed here
 @app.route('/create', methods=['POST'])
 def create_post():
     params = request.get_json()
@@ -442,17 +410,17 @@ def create_post():
         return jsonify(get_response(status_code=404, message='uuid attribute not found'))
 
     # put item in db
-    kwargs = {'table_name': TABLENAME}
+    item_dict = {}
     for i in list(params.keys()):
-        kwargs[i] = params[i]
+        item_dict[i] = params[i]
     try:
-        put_item_ddb(**kwargs)
+        put_item_ddb(table_name=TABLENAME, item_input=item_dict)
     except:
         return jsonify(get_response(status_code=404, message="Dynamodb put_item query failed"))
     return jsonify(get_response(status_code=201, message="Post Created"))
 
 
-# route to update the value of an item
+# route to update the value of an attribute in an existing post
 @app.route('/update', methods=['POST'])
 def update_post():
     params = request.json

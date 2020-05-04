@@ -20,7 +20,7 @@ def init_db():
 
 def fill_db():
     r.flushdb()
-    with open('votes.json') as data_file:
+    with open('data/votes.json') as data_file:
         test_data = json.load(data_file)
 
     length = (len(test_data["data"]))
@@ -47,7 +47,7 @@ fill_db()
 
 """
 
-with open('votes.json', 'rb') as f:
+with open('data/votes.json', 'rb') as f:
     votes = json.loads(f.read())['data']
 for v in votes:
     r.set(v['uuid'], v['score'])

@@ -133,10 +133,11 @@ reddit_api_creds.py
 discarded/*
 scratchpad.ipynb
 
-# ignore all dynamodb files (inconsistent behavior accross different machines)
+# ignore all dynamodb files in root folder 
+# (inconsistent behavior accross different machines)
 DynamoDBLocal.jar
 DynamoDBLocal_lib/*
-shared-local-instance.db
+# shared-local-instance.db
 README.txt
 LICENSE.txt
 third_party_licenses/*
@@ -149,3 +150,6 @@ api.cfg
 *.out
 *.rdb
 *.conf
+
+# ipynb files
+*.ipynb

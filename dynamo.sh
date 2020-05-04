@@ -1,1 +1,2 @@
-java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar -sharedDb;
+#!/bin/bash
+java -Djava.library.path=./dynamodb/DynamoDBLocal_lib -jar dynamodb/DynamoDBLocal.jar -sharedDb;

@@ -6,9 +6,9 @@
 * Raj Chhatbar (chhatbarraj@csu.fullerton.edu) | Role: Dev 3
 
 
-### Note
-Here we have used Reddit API to retrieve posts from Reddit. 
-The uuid used is generated using Python uuid module and then converted to base36 encoding similar to how Reddit generates id.
+Here we have used Reddit API to retrieve posts from Reddit. These posts are used to populate the DynamoDB posts table and Redis votes table key-value store.
+
+The uuid used is generated using Python uuid module and then converted to base36 encoding similar to how Reddit generates their ids.
 All other attributes are retrieved from the API itself.
 
 Attributes for post database in DynamoDB
@@ -126,6 +126,12 @@ http://localhost:5000/get_hot?n=25
 ```
 ![rss_e_3](https://user-images.githubusercontent.com/13769406/81118346-8b0ca600-8edd-11ea-8462-718c9c08a310.PNG)
 
+### Note:
+We have found inconsistent behavior of DynamoDB local populated on one computer having issues running on another computer.
+
+I order to fix it, delete all the files in dynamodb/ dir and replace it with files from dynamodb_local_latest.zip
+Run dynamodb instance in 1 terminal using dynamo.sh script and run `flask init` on another terminal. This will repopulate the DynamoDB posts table.
+The whole process will take around 20 minutes on a HDD and 5 minutes on an SSD.
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)

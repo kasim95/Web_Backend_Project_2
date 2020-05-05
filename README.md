@@ -101,14 +101,21 @@ foreman start -m post_db=1,post=1,vote=1,front=1
 ```
 http://localhost:5000/get?n=25&community_name=csuf
 ```
+
   * The 25 most recent posts to any community
 ```
 http://localhost:5000/get?n=25
 ```
+![rss_e_1](https://user-images.githubusercontent.com/13769406/81118367-8fd15a00-8edd-11ea-8526-5711d9498d71.PNG)
+
+
   * The top 25 posts to a particular community, sorted by score
 ```
 http://localhost:5000/get_sorted?n=25&community_name=csuf
 ```
+![rss_e_2](https://user-images.githubusercontent.com/13769406/81118357-8d6f0000-8edd-11ea-8daa-d2532512b85a.PNG)
+
+
   * The top 25 posts to any community, sorted by score
 ```
 http://localhost:5000/get_sorted?n=25
@@ -117,6 +124,7 @@ http://localhost:5000/get_sorted?n=25
 ```
 http://localhost:5000/get_hot?n=25
 ```
+![rss_e_3](https://user-images.githubusercontent.com/13769406/81118346-8b0ca600-8edd-11ea-8462-718c9c08a310.PNG)
 
 
 ## License

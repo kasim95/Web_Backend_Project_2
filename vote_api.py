@@ -3,6 +3,33 @@ import redis
 from flask import Flask, jsonify, request
 import json
 
+"""
+---------------------Dev 2 - Porting to the voting microservice to Redis---------------------------
+1. Upvote a post
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://localhost:5200/upvotes
+
+2. Downvote a post
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://localhost:5200/downvotes
+
+3. Report the number of scores (downvotes-upvotes) for a post:
+curl -i -X GET 'http://localhost:5200/get?uuid=HARLIKMXW3TICIOQBCND86Z0D3'
+
+4. List the n top-scoring posts to any community:
+curl -i -X GET 'http://localhost:5200/get?n=25&community_name=csuf'
+
+5. Given a list of post identifiers, return the list sorted by score.:
+curl -i -X POST -H 'Content-Type:application/json' -d '{"n":3, "sorted":"True", "uuid":["HARLIKMXW3TICIOQBCND86Z0D3", "C59OGYZWADQVRCCOREWSOUP3R", "ASD3C3PH204FAQ2EEHZY8IG7R"]}' http://localhost:5200/getlist;
+
+6. Create operation
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"HARLIKMXW3TICIOQBCND86Z0D3", "community_name":"csuf", "score":"0", "published":"15058265108"}' http://localhost:5200/create_vote
+
+7. Delete operation
+curl -i -X DELETE 'http://localhost:5200/delete_vote?uuid=CAEPJIPK49FSWZ4K02JBAFYJB'
+
+8. Retrieve all operations
+curl -i -X GET 'http://localhost:5200/get_all'
+
+"""
 
 #flask globals
 app = Flask(__name__)

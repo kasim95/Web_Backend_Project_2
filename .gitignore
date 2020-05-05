@@ -135,8 +135,8 @@ scratchpad.ipynb
 
 # ignore all dynamodb files in root folder 
 # (inconsistent behavior accross different machines)
-DynamoDBLocal.jar
-DynamoDBLocal_lib/*
+# DynamoDBLocal.jar
+# DynamoDBLocal_lib/*
 # shared-local-instance.db
 README.txt
 LICENSE.txt

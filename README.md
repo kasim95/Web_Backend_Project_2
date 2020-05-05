@@ -57,27 +57,27 @@ curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":["CQHYO2LBB1GFRIY
 #### ---------------------Dev 2 - Porting to the voting microservice to Redis---------------------------
 1. Upvote a post
 ```shell script
-curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://127.0.0.1:5000/upvotes
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://localhost:5200/upvotes
 ```
 2. Downvote a post
 ```shell script
-curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://127.0.0.1:5000/downvotes
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://localhost:5200/downvotes
 ```
 3. Report the number of scores (downvotes-upvotes) for a post:
 ```shell script
-curl -i -X GET 'http://127.0.0.1:5000/get?uuid=HARLIKMXW3TICIOQBCND86Z0D3'
+curl -i -X GET 'http://localhost:5200/get?uuid=HARLIKMXW3TICIOQBCND86Z0D3'
 ```
 4. List the n top-scoring posts to any community:
 ```shell script
-curl -i -X GET 'http://127.0.0.1:5000/get?n=25&community_name=csuf'
+curl -i -X GET 'http://localhost:5200/get?n=25&community_name=csuf'
 ```
 5. Given a list of post identifiers, return the list sorted by score.:
 ```shell script
-curl -i -X POST -H 'Content-Type:application/json' -d '{"n":3, "sorted":"True", "uuid":["HARLIKMXW3TICIOQBCND86Z0D3", "C59OGYZWADQVRCCOREWSOUP3R", "ASD3C3PH204FAQ2EEHZY8IG7R"]}' http://127.0.0.1:5000/getlist;
+curl -i -X POST -H 'Content-Type:application/json' -d '{"n":3, "sorted":"True", "uuid":["HARLIKMXW3TICIOQBCND86Z0D3", "C59OGYZWADQVRCCOREWSOUP3R", "ASD3C3PH204FAQ2EEHZY8IG7R"]}' http://localhost:5200/getlist;
 ```
 6. Create operation
 ```shell script
-curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"HARLIKMXW3TICIOQBCND86Z0D3", "community_name":"csuf", "score":"0", "published":"15058265108"}' http://127.0.0.1:5000/create_vote
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"HARLIKMXW3TICIOQBCND86Z0D3", "community_name":"csuf", "score":"0", "published":"15058265108"}' http://localhost:5200/create_vote
 ```
 7. Delete operation
 ```shell script

@@ -83,6 +83,32 @@ def get_votes_all():
 
     return jsonify(json_), 200
 
+
+# This will return a list of rows of corresponding uuids sorted by score
+@app.route('/getlist', methods=['POST'])
+def get_score_list():
+    params = request.json
+    if params.get('uuid') is None:
+        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
+    uuids = params.get('uuid')
+    json_ = []
+    for i in uuids:
+        score = r.hget(i,"score")
+        community_name = r.hget(i,"community_name")
+        published = r.hget(i,"published")
+        if score is not None:
+            json_.append({'uuid': i, 'community_name':community_name, 'score': score, 'published':published})
+    if len(json_) > 0:
+        if bool(params.get('sorted')):
+            json_ = sorted(json_, key=lambda x: int(x['score']), reverse=True)
+
+        if params.get('n') is not None:
+            json_ = json_[:int(params.get('n'))]
+        return jsonify(json_), 200
+    else:
+        return jsonify([]), 200
+
+
 """
 http://127.0.0.1:5000/get?n=25&community_name=csuf&sorted=True
 http://127.0.0.1:5000/get?n=25&community_name=csuf
@@ -148,9 +174,9 @@ def get_score():
 
 It will create a new entry into the database with all the columns details mentioned in the url
 """
-@app.route('/create_vote',methods=['GET'])
+@app.route('/create_vote',methods=['POST'])
 def create_vote():
-    params = request.args
+    params = request.json
     if params.get('uuid') is not None:
 
         uuid = params["uuid"]
@@ -174,7 +200,7 @@ def create_vote():
 # It will increment (upvote) the score column into the database
 @app.route('/upvotes',methods=['POST'])
 def get_upvotes():
-    params = request.args
+    params = request.json
     uuid=params.get('uuid')
     if uuid is None:
         return jsonify(get_response(status_code=404, message='uuid attribute not found'))
@@ -196,7 +222,7 @@ def get_upvotes():
 # It will decrement (downvote) the score column into the database
 @app.route('/downvotes',methods=['POST'])
 def get_downvotes():
-    params = request.args
+    params = request.json
     if params.get('uuid') is None:
         return jsonify(get_response(status_code=404, message='uuid attribute not found'))
     uuid = params.get('uuid')

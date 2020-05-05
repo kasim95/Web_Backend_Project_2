@@ -55,37 +55,37 @@ curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":["CQHYO2LBB1GFRIY
 ```
 
 #### ---------------------Dev 2 - Porting to the voting microservice to Redis---------------------------
-1. Create a new vote
+1. Upvote a post
 ```shell script
-curl -i -X GET 'http://localhost:5200/create_vote?uuid=QWERTEWC6NZGR1A781OSPMNKPJ&community_name=csuf&score=548789&published=1521027928.0'
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://127.0.0.1:5000/upvotes
 ```
-2. Delete an existing vote
+2. Downvote a post
+```shell script
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"QWERTYMXW3TICIOQBCND86Z0D3"}' http://127.0.0.1:5000/downvotes
+```
+3. Report the number of scores (downvotes-upvotes) for a post:
+```shell script
+curl -i -X GET 'http://127.0.0.1:5000/get?uuid=HARLIKMXW3TICIOQBCND86Z0D3'
+```
+4. List the n top-scoring posts to any community:
+```shell script
+curl -i -X GET 'http://127.0.0.1:5000/get?n=25&community_name=csuf'
+```
+5. Given a list of post identifiers, return the list sorted by score.:
+```shell script
+curl -i -X POST -H 'Content-Type:application/json' -d '{"n":3, "sorted":"True", "uuid":["HARLIKMXW3TICIOQBCND86Z0D3", "C59OGYZWADQVRCCOREWSOUP3R", "ASD3C3PH204FAQ2EEHZY8IG7R"]}' http://127.0.0.1:5000/getlist;
+```
+6. Create operation
+```shell script
+curl -i -X POST -H 'Content-Type:application/json' -d '{"uuid":"HARLIKMXW3TICIOQBCND86Z0D3", "community_name":"csuf", "score":"0", "published":"15058265108"}' http://127.0.0.1:5000/create_vote
+```
+7. Delete operation
 ```shell script
 curl -i -X DELETE 'http://localhost:5200/delete_vote?uuid=CAEPJIPK49FSWZ4K02JBAFYJB'
 ```
-3. Retrieve an existing vote
-```shell script
-curl -i -X GET 'http://localhost:5200/get?uuid=CUJCJWC6NZGR1A781OSPMNKPJ
-```
-4. Retrieve all votes
+8. Retrieve all operations
 ```shell script
 curl -i -X GET 'http://localhost:5200/get_all'
-```
-5. List n most recent votes to a particular community
-```shell script
-curl -i -X GET 'http://localhost:5200/get?n=25&community_name=csuf&sorted=True
-```
-6. List n most recent votes to any community
-```shell script
-curl -i -X GET 'http://localhost:5200/get?n=25&sorted=True'
-```
-7. Upvote an existing vote
-```shell script
-curl -i -X POST 'http://localhost:5200/upvotes?uuid=CAEPJIPK49FSWZ4K02JBAFYJB'
-```
-8. Downvote an existing vote
-```shell script
-curl -i -X POST 'http://localhost:5200/downvotes?uuid=CAEPJIPK49FSWZ4K02JBAFYJB'
 ```
 
 

@@ -4,13 +4,12 @@ from flask import Flask, jsonify, request
 import json
 
 
-#config
+#flask globals
 app = Flask(__name__)
+#flask config variables
 app.config['DEBUG'] = True
 
-
-
-
+# Init the Redis database
 def init_db():
     db = redis.StrictRedis(host='localhost',
     port=6379,
@@ -39,19 +38,13 @@ def fill_db():
         r.zadd("score",{uuid : score })
         r.zadd("published",{ uuid: published })
 
+
 # initiaize redis database
 r = init_db()
 
 # load data in redis database
 fill_db()
 
-"""
-
-with open('data/votes.json', 'rb') as f:
-    votes = json.loads(f.read())['data']
-for v in votes:
-    r.set(v['uuid'], v['score'])
-"""
 
 # helper function to generate a response with status code and message
 def get_response(status_code, message):
@@ -71,9 +64,9 @@ def page_not_found(status_code=404):
     return jsonify(error_json), status_code
 
 
-
+# It will return all the rows from the database
 @app.route('/get_all', methods=['GET'])
-def get_posts_all():
+def get_votes_all():
     all_id_sorted_by_score = r.zrange("score", 0, -1, desc=True)
     json_ = []
 
@@ -88,16 +81,17 @@ def get_posts_all():
         d["community_name"] = community_name
         json_.append(d)
 
-
-
     return jsonify(json_), 200
 
+"""
+http://127.0.0.1:5000/get?n=25&community_name=csuf&sorted=True
+http://127.0.0.1:5000/get?n=25&community_name=csuf
+http://127.0.0.1:5000/get?n=25
+http://127.0.0.1:5000/get?n=25&sorted=True
+http://127.0.0.1:5000/get?uuid=CUJCJWC6NZGR1A781OSPMNKPJ
 
-# http://127.0.0.1:5000/get?n=25&community_name=csuf&sorted=True
-# http://127.0.0.1:5000/get?n=25&community_name=csuf
-# http://127.0.0.1:5000/get?n=25
-# http://127.0.0.1:5000/get?n=25&sorted=True
-# http://127.0.0.1:5000/get?uuid=CUJCJWC6NZGR1A781OSPMNKPJ
+It will return the rows as per parameters passed
+"""
 @app.route('/get', methods=['GET'])
 def get_score():
     params = request.args
@@ -116,7 +110,7 @@ def get_score():
             ]
             return jsonify(json_), 200
         else:
-            return jsonify(get_response(404, "uuid not found"))
+            return jsonify(get_response(404, "score not found"))
     elif params.get('n') is not None:
 
         if params.get('community_name') is not None:
@@ -149,35 +143,38 @@ def get_score():
         return jsonify(json_[:int(params.get('n'))])
 
 
-# format for POST Request:
-# {'uuid':[1234, 123, 123, 123]}
-# example curl command in test_scripts/v01_getlist.sh
-# sorted = True for uuids sorted in descending order by score
-# n = 25 to return top 25 posts from the requested uuids
-@app.route('/getlist', methods=['POST'])
-def get_score_list():
-    params = request.json
-    if params.get('uuid') is None:
-        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
-    uuids = params.get('uuid')
-    json_ = []
-    for i in uuids:
-        score = r.hget(i,"score")
-        if score is not None:
-            json_.append({'uuid': i, 'score': score})
-    if len(json_) > 0:
-        if bool(params.get('sorted')):
-            json_ = sorted(json_, key=lambda x: int(x['score']), reverse=True)
+"""
+    http://127.0.0.1:5000/create_vote?uuid=QWERTYWC6NZGR1A781OSPMNKPJ&community_name=csuf&score=548789&published=1521027928.0
 
-        if params.get('n') is not None:
-            json_ = json_[:int(params.get('n'))]
-        return jsonify(json_), 200
+It will create a new entry into the database with all the columns details mentioned in the url
+"""
+@app.route('/create_vote',methods=['GET'])
+def create_vote():
+    params = request.args
+    if params.get('uuid') is not None:
+
+        uuid = params["uuid"]
+        community_name = params["community_name"]
+        score = params["score"]
+        published = params["published"]
+
+        if not r.exists(uuid):
+            r.hset(uuid, "community_name" ,community_name)
+            r.sadd(community_name,  uuid)
+            r.hset(uuid, "score" ,score)
+            r.hset(uuid, "published" ,published)
+            r.zadd("score",{uuid : score })
+            r.zadd("published",{ uuid: published })
+            return jsonify(status_code=201,message="New row created")
+
+        return jsonify(status_code=409, message='uuid already exists')
     else:
-        return jsonify([]), 200
+        return jsonify(get_response(status_code=404, message='uuid attribute not found'))
 
+# It will increment (upvote) the score column into the database
 @app.route('/upvotes',methods=['POST'])
 def get_upvotes():
-    params = request.get_json()
+    params = request.args
     uuid=params.get('uuid')
     if uuid is None:
         return jsonify(get_response(status_code=404, message='uuid attribute not found'))
@@ -196,11 +193,10 @@ def get_upvotes():
     ]
     return jsonify(json_), 200
 
-
-
+# It will decrement (downvote) the score column into the database
 @app.route('/downvotes',methods=['POST'])
 def get_downvotes():
-    params = request.get_json()
+    params = request.args
     if params.get('uuid') is None:
         return jsonify(get_response(status_code=404, message='uuid attribute not found'))
     uuid = params.get('uuid')
@@ -218,11 +214,21 @@ def get_downvotes():
     ]
     return jsonify(json_), 200
 
+# It will delete the entry from the database
+@app.route('/delete_vote',methods=['DELETE'])
+def delete_vote():
+    params = request.args
+    if params.get('uuid') is not None:
+        uuid = params["uuid"]
+        if r.exists(uuid):
+            r.delete(uuid)
+            return jsonify(get_response(status_code=200, message='Vote deleted'))
+    else:
+        return jsonify(get_response(status_code=404, message='Delete vote requires uuid attribute'))
+
 
 def main():
-
     app.run()
-
 
 if __name__ == '__main__':
     main()

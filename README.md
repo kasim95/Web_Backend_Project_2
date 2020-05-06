@@ -27,12 +27,15 @@ csuf | news | Coronavirus | Python | computerscience | bitcoin
 
 Total number of posts in database: 10,000
 
-#### Note by Dev-1
+#### Note
 
 We have found inconsistent behavior of DynamoDB local populated on one computer having issues running on another computer.
 
-In order to fix it, delete all the files in dynamodb/ dir and replace it with files from dynamodb_local_latest.zip
-Run dynamodb instance in 1 terminal using dynamo.sh script and run `flask init` on another terminal. This will repopulate the DynamoDB posts table.
+In order to fix it, 
+1) delete all the files in dynamodb/ dir
+2) replace it with files from dynamodb_local_latest.zip
+3) Run dynamodb instance in 1 terminal using dynamo.sh script
+4) Run `flask init` on another terminal. This will repopulate the DynamoDB posts table.
 The whole process will take around 20 minutes on a HDD and 5 minutes on an SSD.
 
 

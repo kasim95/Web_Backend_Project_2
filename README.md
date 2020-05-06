@@ -98,6 +98,8 @@ curl -i -X GET 'http://localhost:5200/get_all'
 
 
 #### ---------------------Dev 3 - Aggregating posts and votes with a BFF---------------------------
+* As mail reader was giving output scored by published date, I have used a crome extension called "Slick RSS" to verify the RSS feeds.
+
 1) Use this code for generating 1 instance each for post_db, post_api, vote_api and front_BFF
 ```shell script
 foreman start -m post_db=1,post=1,vote=1,front=1

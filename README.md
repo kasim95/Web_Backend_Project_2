@@ -2,7 +2,7 @@
 ## Project-2
 ### Project Members:
 * Mohammed Kasim Panjri (kasimp@csu.fullerton.edu) | Role: Dev 1
-* Harlik Shah (shahharlik@csu.fullerton.edu) | Role: Dev 2 
+* Harlik Shah (shahharlik@csu.fullerton.edu) | Role: Dev 2
 * Raj Chhatbar (chhatbarraj@csu.fullerton.edu) | Role: Dev 3
 
 
@@ -27,6 +27,14 @@ csuf | news | Coronavirus | Python | computerscience | bitcoin
 
 Total number of posts in database: 10,000
 
+#### Note by Dev-1
+```
+We have found inconsistent behavior of DynamoDB local populated on one computer having issues running on another computer.
+
+In order to fix it, delete all the files in dynamodb/ dir and replace it with files from dynamodb_local_latest.zip
+Run dynamodb instance in 1 terminal using dynamo.sh script and run `flask init` on another terminal. This will repopulate the DynamoDB posts table.
+The whole process will take around 20 minutes on a HDD and 5 minutes on an SSD.
+```
 
 #### -----------------Dev 1 - Porting the posting microservice to Amazon DynamoDB Local----------------------
 * Create a new post
@@ -106,8 +114,6 @@ http://localhost:5000/get?n=25&community_name=csuf
 ```
 http://localhost:5000/get?n=25
 ```
-![rss_e_1](https://user-images.githubusercontent.com/13769406/81118367-8fd15a00-8edd-11ea-8526-5711d9498d71.PNG)
-
 
   * The top 25 posts to a particular community, sorted by score
 ```
@@ -120,18 +126,13 @@ http://localhost:5000/get_sorted?n=25&community_name=csuf
 ```
 http://localhost:5000/get_sorted?n=25
 ```
+![rss_e_1](https://user-images.githubusercontent.com/13769406/81118367-8fd15a00-8edd-11ea-8526-5711d9498d71.PNG)
   * The hot 25 posts to any community, ranked using Reddit’s “hot ranking” algorithm.
 ```
 http://localhost:5000/get_hot?n=25
 ```
 ![rss_e_3](https://user-images.githubusercontent.com/13769406/81118346-8b0ca600-8edd-11ea-8462-718c9c08a310.PNG)
 
-### Note:
-We have found inconsistent behavior of DynamoDB local populated on one computer having issues running on another computer.
-
-I order to fix it, delete all the files in dynamodb/ dir and replace it with files from dynamodb_local_latest.zip
-Run dynamodb instance in 1 terminal using dynamo.sh script and run `flask init` on another terminal. This will repopulate the DynamoDB posts table.
-The whole process will take around 20 minutes on a HDD and 5 minutes on an SSD.
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)

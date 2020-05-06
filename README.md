@@ -109,12 +109,13 @@ foreman start -m post_db=1,post=1,vote=1,front=1
 ```
 http://localhost:5000/get?n=25&community_name=csuf
 ```
+![rss_e_5](https://user-images.githubusercontent.com/33519807/81129401-0b8cd000-8ef9-11ea-8f93-2c5bf6bedf39.PNG)
 
   * The 25 most recent posts to any community
 ```
 http://localhost:5000/get?n=25
 ```
-
+![rss_e_4](https://user-images.githubusercontent.com/33519807/81129399-0891df80-8ef9-11ea-9443-d9de7005b7dd.PNG)
   * The top 25 posts to a particular community, sorted by score
 ```
 http://localhost:5000/get_sorted?n=25&community_name=csuf
